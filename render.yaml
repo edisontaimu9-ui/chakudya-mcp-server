@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: chakudya-mcp-server
+    runtime: node
+    plan: free
+    region: oregon
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: CHAKUDYA_API_BASE_URL
+        value: https://chakudya-api.edisontaimu9.workers.dev
+      - key: MCP_AUTH_TOKEN
+        generateValue: true
+      - key: MCP_RATE_LIMIT_PER_MIN
+        value: "60"
