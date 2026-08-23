@@ -240,13 +240,15 @@ export function registerFoodTools(server: McpServer) {
   server.registerTool(
     "barcode_lookup",
     {
-      title: "Barcode Lookup",
+      title: "Packaged Product Lookup",
       description:
-        "Look up a packaged food product by its barcode (EAN/UPC). Checks the community-submitted " +
-        "packaged foods table first, then falls back to the external cascade (Open Food Facts, etc.) " +
-        "via the CNR foods/lookup route.",
+        "Look up a packaged food product by barcode (EAN/UPC) and/or free-text product name. Checks the " +
+        "community-submitted packaged foods table first, then falls back to the external cascade " +
+        "(USDA FoodData Central / Open Food Facts / FatSecret) via the CNR foods/lookup route. At least " +
+        "one of barcode or query must be provided.",
       inputSchema: {
-        barcode: z.string().min(6).describe("The product barcode, digits only"),
+        barcode: z.string().min(6).optional().describe("The product barcode, digits only"),
+        query: z.string().optional().describe("Free-text product name to search for"),
       },
       annotations: {
         readOnlyHint: true,
@@ -255,19 +257,23 @@ export function registerFoodTools(server: McpServer) {
         openWorldHint: true,
       },
     },
-    safeTool("barcode_lookup", async ({ barcode }) => {
-      const packaged = await chakudyaClient.get("/packaged", { barcode, limit: 5 });
+    safeTool("barcode_lookup", async ({ barcode, query }) => {
+      if (!barcode && !query) {
+        throw new ChakudyaApiError("Provide at least one of: barcode, query", 400, "/packaged", null);
+      }
+
+      const packaged = await chakudyaClient.get("/packaged", { barcode, search: query, limit: 5 });
       const packagedResults = Array.isArray(packaged.data) ? packaged.data : [];
       if (packagedResults.length > 0) {
         return ok(packagedResults, { source: "community_packaged_foods" });
       }
 
       try {
-        const fallback = await chakudyaClient.get("/foods/lookup", { barcode });
-        return ok(fallback.data, { source: "external_fallback" });
+        const fallback = await chakudyaClient.get("/foods/lookup", { barcode, q: query });
+        return ok(fallback.data ?? [], { source: "external_fallback" });
       } catch (e) {
         if (e instanceof ChakudyaApiError && e.status === 404) {
-          return ok(null, { message: `No product found for barcode ${barcode}` });
+          return ok([], { message: `No product found for ${barcode ? `barcode ${barcode}` : `"${query}"`}` });
         }
         throw e;
       }
@@ -280,11 +286,12 @@ export function registerFoodTools(server: McpServer) {
     {
       title: "Packaged Food Search",
       description:
-        "Search packaged/branded food products by barcode (EAN/UPC). The Chakudya API only supports " +
-        "barcode lookups for packaged products — there is no free-text name search for this table. " +
-        "Use search_food instead for name-based queries.",
+        "Search packaged/branded food products. Pass a barcode for an exact lookup, and/or a free-text " +
+        "query to search by product name (substring match). At least one of barcode or query must be " +
+        "provided.",
       inputSchema: {
-        barcode: z.string().min(6).describe("The product barcode, digits only"),
+        query: z.string().optional().describe("Free-text product name search"),
+        barcode: z.string().optional(),
         limit: z.number().int().positive().max(50).optional().default(10),
       },
       annotations: {
@@ -294,8 +301,11 @@ export function registerFoodTools(server: McpServer) {
         openWorldHint: true,
       },
     },
-    safeTool("packaged_food_search", async ({ barcode, limit }) => {
-      const res = await chakudyaClient.get("/packaged", { barcode, limit });
+    safeTool("packaged_food_search", async ({ query, barcode, limit }) => {
+      if (!query && !barcode) {
+        throw new ChakudyaApiError("Provide at least one of: query, barcode", 400, "/packaged", null);
+      }
+      const res = await chakudyaClient.get("/packaged", { barcode, search: query, limit });
       return ok(res.data ?? [], { source: "community_packaged_foods" });
     })
   );
