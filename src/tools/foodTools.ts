@@ -8,7 +8,11 @@ interface CnrFood {
   id?: string | number;
   food_name: string;
   category?: string | null;
+  // Local Malawi FCT rows (from /foods, /foods/:id) store calories as `kcal`;
+  // only the /foods/lookup external-cascade fallback normalizes to
+  // `energy_kcal`. Accept both and prefer whichever is present.
   energy_kcal?: number | null;
+  kcal?: number | null;
   protein_g?: number | null;
   fat_g?: number | null;
   carbs_g?: number | null;
@@ -19,11 +23,18 @@ interface CnrFood {
 
 const NUTRIENT_KEYS = ["energy_kcal", "protein_g", "fat_g", "carbs_g", "fiber_g", "sodium_mg"] as const;
 
+/** Fills in `energy_kcal` from the local `kcal` column when the API hasn't
+ * already normalized it (see CnrFood comment above). Leaves everything else
+ * untouched. */
+function normalizeFood(food: CnrFood): CnrFood {
+  return { ...food, energy_kcal: food.energy_kcal ?? food.kcal ?? null };
+}
+
 function scaleNutrients(food: CnrFood, grams: number) {
   const factor = grams / 100;
   const scaled: Record<string, number | null> = {};
   for (const key of NUTRIENT_KEYS) {
-    const val = food[key];
+    const val = key === "energy_kcal" ? food.energy_kcal ?? food.kcal : food[key];
     scaled[key] = typeof val === "number" ? Math.round(val * factor * 100) / 100 : null;
   }
   return scaled;
@@ -34,7 +45,7 @@ async function resolveFood(input: { food_id?: string | number; food_name?: strin
   if (input.food_id !== undefined && input.food_id !== null && input.food_id !== "") {
     const res = await chakudyaClient.get<CnrFood>(`/foods/${input.food_id}`);
     if (!res.data) throw new ChakudyaApiError("Food id not found", 404, "/foods/:id", null);
-    return res.data;
+    return normalizeFood(res.data);
   }
   if (input.food_name) {
     const res = await chakudyaClient.get<CnrFood[]>("/foods", { search: input.food_name, limit: 1 });
@@ -47,7 +58,7 @@ async function resolveFood(input: { food_id?: string | number; food_name?: strin
         null
       );
     }
-    return first;
+    return normalizeFood(first);
   }
   throw new ChakudyaApiError("Provide either food_id or food_name", 400, "/foods", null);
 }
@@ -77,15 +88,16 @@ export function registerFoodTools(server: McpServer) {
     },
     safeTool("search_food", async ({ query, category, limit }) => {
       const local = await chakudyaClient.get<CnrFood[]>("/foods", { search: query, category, limit });
-      const localResults = Array.isArray(local.data) ? local.data : [];
+      const localResults = Array.isArray(local.data) ? local.data.map(normalizeFood) : [];
       if (localResults.length > 0) {
         return ok(localResults, { source: "local_database", count: localResults.length });
       }
 
       // Fall back to the external cascade for foods not yet in CNR.
       try {
-        const fallback = await chakudyaClient.get<CnrFood>("/foods/lookup", { q: query });
-        return ok([fallback.data], {
+        const fallback = await chakudyaClient.get<CnrFood[]>("/foods/lookup", { q: query });
+        const fallbackResults = Array.isArray(fallback.data) ? fallback.data.map(normalizeFood) : [];
+        return ok(fallbackResults, {
           source: "external_fallback",
           note: "Not found locally; retrieved via USDA/OpenFoodFacts/FatSecret cascade and cached for next time.",
         });
@@ -118,7 +130,7 @@ export function registerFoodTools(server: McpServer) {
     },
     safeTool("get_food_details", async ({ food_id }) => {
       const res = await chakudyaClient.get<CnrFood>(`/foods/${food_id}`);
-      return ok(res.data);
+      return ok(res.data ? normalizeFood(res.data) : res.data);
     })
   );
 
@@ -268,12 +280,11 @@ export function registerFoodTools(server: McpServer) {
     {
       title: "Packaged Food Search",
       description:
-        "Search packaged/branded food products. Pass a barcode for an exact packaged-foods lookup, " +
-        "and/or a free-text query to search the manufacturer product catalog (name search). At least " +
-        "one of barcode or query must be provided.",
+        "Search packaged/branded food products by barcode (EAN/UPC). The Chakudya API only supports " +
+        "barcode lookups for packaged products — there is no free-text name search for this table. " +
+        "Use search_food instead for name-based queries.",
       inputSchema: {
-        query: z.string().optional().describe("Free-text product name search"),
-        barcode: z.string().optional(),
+        barcode: z.string().min(6).describe("The product barcode, digits only"),
         limit: z.number().int().positive().max(50).optional().default(10),
       },
       annotations: {
@@ -283,21 +294,9 @@ export function registerFoodTools(server: McpServer) {
         openWorldHint: true,
       },
     },
-    safeTool("packaged_food_search", async ({ query, barcode, limit }) => {
-      if (!query && !barcode) {
-        throw new ChakudyaApiError("Provide at least one of: query, barcode", 400, "/packaged", null);
-      }
-
-      const results: Record<string, unknown> = {};
-      if (barcode) {
-        const res = await chakudyaClient.get("/packaged", { barcode, limit });
-        results.packaged_foods = res.data ?? [];
-      }
-      if (query) {
-        const res = await chakudyaClient.get("/products", { search: query, limit });
-        results.product_catalog = res.data ?? [];
-      }
-      return ok(results);
+    safeTool("packaged_food_search", async ({ barcode, limit }) => {
+      const res = await chakudyaClient.get("/packaged", { barcode, limit });
+      return ok(res.data ?? [], { source: "community_packaged_foods" });
     })
   );
 }
