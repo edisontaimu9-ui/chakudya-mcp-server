@@ -16,7 +16,14 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
 
   const header = req.headers.authorization ?? "";
   const match = header.match(/^Bearer\s+(.+)$/i);
-  const token = match?.[1];
+
+  // Fallback for MCP clients whose UI only supports OAuth and provides no
+  // way to set a custom Authorization header (e.g. Claude.ai's mobile
+  // "Add custom connector" form). These clients can still reach this
+  // server by putting the token in the URL as ?token=... instead.
+  const queryToken = typeof req.query.token === "string" ? req.query.token : undefined;
+
+  const token = match?.[1] ?? queryToken;
 
   if (!token || token !== env.MCP_AUTH_TOKEN) {
     logger.warn("mcp_auth_rejected", { ip: req.ip, path: req.path });
