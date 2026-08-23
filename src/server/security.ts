@@ -27,6 +27,18 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
 
   if (!token || token !== env.MCP_AUTH_TOKEN) {
     logger.warn("mcp_auth_rejected", { ip: req.ip, path: req.path });
+
+    // Points OAuth-only MCP clients (e.g. Claude.ai's connector UI) at
+    // this server's protected-resource metadata so they can discover the
+    // /authorize and /token endpoints in server/oauth.ts instead of
+    // giving up after the first 401.
+    const proto = (req.get("x-forwarded-proto") ?? req.protocol).split(",")[0].trim();
+    const issuer = `${proto}://${req.get("host")}`;
+    res.setHeader(
+      "WWW-Authenticate",
+      `Bearer resource_metadata="${issuer}/.well-known/oauth-protected-resource"`
+    );
+
     res.status(401).json({
       jsonrpc: "2.0",
       error: { code: -32001, message: "Unauthorized: missing or invalid bearer token" },

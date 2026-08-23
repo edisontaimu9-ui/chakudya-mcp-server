@@ -7,9 +7,20 @@ import { env } from "./config/env.js";
 import { logger } from "./utils/logger.js";
 import { createChakudyaMcpServer } from "./server/createServer.js";
 import { requireAuth, rateLimit } from "./server/security.js";
+import { oauthRouter } from "./server/oauth.js";
 
 const app = express();
 app.use(express.json({ limit: "2mb" }));
+// The OAuth /token endpoint is conventionally called with a form-encoded
+// body (per RFC 6749), even though every other route on this server uses
+// JSON. Some clients send JSON anyway; express.json() above already
+// handles that case, this just covers the standard-compliant ones too.
+app.use(express.urlencoded({ extended: false }));
+
+// OAuth discovery/registration/authorize/token endpoints are intentionally
+// unauthenticated — a client has no token yet when it hits these. See
+// server/oauth.ts for why this server implements OAuth at all.
+app.use(oauthRouter);
 
 if (env.MCP_ALLOWED_ORIGINS.length > 0) {
   app.use(
