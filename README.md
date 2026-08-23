@@ -1,9 +1,9 @@
 # Chakudya MCP Server
 
 An [MCP](https://modelcontextprotocol.io) (Model Context Protocol) server that exposes the **Chakudya
-Nutrition Registry (CNR)** API — <https://chakudya-api.edisontaimu9.workers.dev> — as a set of MCP tools,
-so any MCP-compatible client (Claude, Claude Code, other LLM agents) can search Malawian food data,
-run clinical nutrition lookups, and query the RAG knowledge base directly.
+Nutrition Registry (CNR)** API as a set of MCP tools, so any MCP-compatible client (Claude, Claude Code,
+other LLM agents) can search Malawian food data, run clinical nutrition lookups, and query the RAG
+knowledge base directly.
 
 **This is a new, separate layer. It does not replace or modify the Chakudya Worker.** It's a small
 Node/TypeScript HTTP service that sits in front of your existing API and translates MCP tool calls into
@@ -84,7 +84,7 @@ Copy `.env.example` to `.env` and fill in:
 
 | Variable | Required | Notes |
 |---|---|---|
-| `CHAKUDYA_API_BASE_URL` | no (defaults to your Worker) | Already set to `https://chakudya-api.edisontaimu9.workers.dev` |
+| `CHAKUDYA_API_BASE_URL` | no (defaults to the maintainer's own Worker) | If you're forking this repo to front your own CNR instance, set this to your own Worker's URL instead of relying on the default |
 | `CHAKUDYA_ADMIN_API_KEY` | no | Not used by any current tool; only needed if you add an admin-gated tool later |
 | `PORT` | no (default `8787`) | |
 | `MCP_AUTH_TOKEN` | **yes in production** | Bearer token MCP clients must send. Server refuses to start in production without it |
@@ -155,8 +155,9 @@ configuration.
 3. Render provisions the service on the **Free** plan and auto-generates a random `MCP_AUTH_TOKEN`
    (via `generateValue: true`). After the first deploy, go to the service's **Environment** tab to copy
    that generated token — you'll need it in your MCP client config.
-4. Deploy. Your MCP endpoint will be `https://chakudya-mcp-server.onrender.com/mcp` (Render may append
-   a random suffix if that name's taken — check the dashboard for your actual URL).
+4. Deploy. Your MCP endpoint will be `https://<your-service-name>.onrender.com/mcp` (check the Render
+   dashboard for your actual generated URL — it may include a random suffix if your chosen name is
+   taken).
 
 ### The free-tier sleep problem, and the fix
 
@@ -198,11 +199,11 @@ docker build -t chakudya-mcp-server .
 docker run -d -p 8787:8787 \
   -e NODE_ENV=production \
   -e MCP_AUTH_TOKEN=<long-random-string> \
-  -e CHAKUDYA_API_BASE_URL=https://chakudya-api.edisontaimu9.workers.dev \
+  -e CHAKUDYA_API_BASE_URL=<your-chakudya-worker-url> \
   --name chakudya-mcp chakudya-mcp-server
 ```
 
-### Option C — Plain VPS with a process manager
+### Plain VPS with a process manager
 
 ```bash
 npm install --omit=dev
