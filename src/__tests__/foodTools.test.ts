@@ -48,12 +48,38 @@ test("search_food returns local results as-is when the local DB has a match", as
   }
 });
 
-test("search_food falls back to /foods/lookup and does NOT double-wrap the array (regression)", async () => {
+test("search_food falls back to /foods/lookup when it returns a single object (real API shape)", async () => {
   const restore = mockFetch((url) => {
     if (url.pathname === "/foods") return jsonEnvelope([], { count: 0 });
     assert.equal(url.pathname, "/foods/lookup");
     assert.equal(url.searchParams.get("q"), "quinoa");
-    // /foods/lookup always returns an array under `data` (ListOrCursor shape).
+    // Confirmed via live curl against the deployed Worker: /foods/lookup
+    // returns a single best-match object under `data`, not an array.
+    // A prior version of this test (and the code it tested) incorrectly
+    // assumed an array here, which silently dropped every fallback result.
+    return jsonEnvelope({ food_name: "Quinoa, cooked", energy_kcal: 120 });
+  });
+  const { client, close } = await createTestClient(registerFoodTools);
+  try {
+    const result = await client.callTool({ name: "search_food", arguments: { query: "quinoa" } });
+    const parsed = parseToolJson(result);
+    assert.equal(parsed.source, "external_fallback");
+    assert.equal(Array.isArray(parsed.data), true);
+    assert.equal(parsed.data.length, 1);
+    assert.equal(parsed.data[0].food_name, "Quinoa, cooked");
+    assert.equal(parsed.data[0].energy_kcal, 120);
+  } finally {
+    await close();
+    restore();
+  }
+});
+
+test("search_food falls back to /foods/lookup and does NOT double-wrap when it returns an array", async () => {
+  const restore = mockFetch((url) => {
+    if (url.pathname === "/foods") return jsonEnvelope([], { count: 0 });
+    assert.equal(url.pathname, "/foods/lookup");
+    assert.equal(url.searchParams.get("q"), "quinoa");
+    // Also handle the array shape in case the API ever returns multiple candidates.
     return jsonEnvelope([{ food_name: "Quinoa", energy_kcal: 120 }]);
   });
   const { client, close } = await createTestClient(registerFoodTools);

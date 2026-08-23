@@ -94,9 +94,16 @@ export function registerFoodTools(server: McpServer) {
       }
 
       // Fall back to the external cascade for foods not yet in CNR.
+      // Note: /foods/lookup returns a single best-match object under `data`
+      // (not an array, unlike /foods), so normalize both shapes here.
       try {
-        const fallback = await chakudyaClient.get<CnrFood[]>("/foods/lookup", { q: query });
-        const fallbackResults = Array.isArray(fallback.data) ? fallback.data.map(normalizeFood) : [];
+        const fallback = await chakudyaClient.get<CnrFood[] | CnrFood>("/foods/lookup", { q: query });
+        const raw = fallback.data;
+        const fallbackResults = Array.isArray(raw)
+          ? raw.map(normalizeFood)
+          : raw
+            ? [normalizeFood(raw)]
+            : [];
         return ok(fallbackResults, {
           source: "external_fallback",
           note: "Not found locally; retrieved via USDA/OpenFoodFacts/FatSecret cascade and cached for next time.",
