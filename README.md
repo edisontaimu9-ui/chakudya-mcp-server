@@ -110,7 +110,7 @@ Copy `.env.example` to `.env` and fill in:
 - **CORS is off by default.** Only enable `MCP_ALLOWED_ORIGINS` if you have a specific browser-based MCP
   client; server-to-server MCP clients (Claude Desktop, Claude Code, etc.) don't need it.
 
-## Running locally (Termux)
+## Running locally
 
 ```bash
 cd ~
@@ -213,7 +213,7 @@ npx pm2 start dist/index.js --name chakudya-mcp
 Put it behind Nginx/Caddy for TLS termination if you're not already fronting it with something that
 handles HTTPS.
 
-## Termux deployment (git workflow)
+## Updating via the command line
 
 ```bash
 cd ~
@@ -222,7 +222,7 @@ git clone https://github.com/edisontaimu9-ui/chakudya-mcp-server.git
 cd chakudya-mcp-server
 
 # after any file update:
-cp /storage/emulated/0/Download/<updated-file>.ts src/<path>/<updated-file>.ts
+cp <path-to-updated-file>.ts src/<path>/<updated-file>.ts
 git add .
 git commit -m "Update MCP server"
 git push
