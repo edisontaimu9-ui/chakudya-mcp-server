@@ -27,6 +27,12 @@ export function registerClinicalTools(server: McpServer) {
         limit: z.number().int().positive().max(200).optional().default(50),
         offset: z.number().int().nonnegative().optional().default(0),
       },
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: true,
+      },
     },
     safeTool("diabetes_exchange_lookup", async ({ type, limit, offset }) => {
       const res = await chakudyaClient.get("/exchange", { type, limit, offset });
@@ -46,6 +52,12 @@ export function registerClinicalTools(server: McpServer) {
       inputSchema: {
         limit: z.number().int().positive().max(200).optional().default(50),
         offset: z.number().int().nonnegative().optional().default(0),
+      },
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: true,
       },
     },
     safeTool("renal_exchange_lookup", async ({ limit, offset }) => {
@@ -67,6 +79,12 @@ export function registerClinicalTools(server: McpServer) {
         route: z.string().optional().describe("Feeding route, e.g. 'oral', 'NG', 'PEG', 'IV'"),
         limit: z.number().int().positive().max(200).optional().default(50),
         offset: z.number().int().nonnegative().optional().default(0),
+      },
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: true,
       },
     },
     safeTool("enteral_formula_lookup", async ({ route, limit, offset }) => {
@@ -97,6 +115,12 @@ export function registerClinicalTools(server: McpServer) {
             "sedentary=little/no exercise, light=1-3 days/wk, moderate=3-5 days/wk, " +
               "active=6-7 days/wk, very_active=hard daily exercise or physical job"
           ),
+      },
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
       },
     },
     safeTool(

@@ -32,6 +32,12 @@ export function registerEducationTools(server: McpServer) {
           .optional()
           .describe("Optional angle to focus on, e.g. 'dietary management' or 'complications'"),
       },
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: true,
+      },
     },
     safeTool("disease_information", async ({ condition, focus }) => {
       const query =
@@ -66,6 +72,12 @@ export function registerEducationTools(server: McpServer) {
         "not clinical decision support for prescribing.",
       inputSchema: {
         medicine: z.string().min(1).describe("Medication name (generic or brand)"),
+      },
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: true,
       },
     },
     safeTool("medicine_information", async ({ medicine }) => {

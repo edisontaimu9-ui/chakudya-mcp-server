@@ -2,6 +2,7 @@
   "name": "chakudya-mcp-server",
   "version": "1.0.0",
   "description": "MCP server exposing the Chakudya Nutrition Registry (CNR) API as MCP tools over Streamable HTTP.",
+  "license": "MIT",
   "type": "module",
   "main": "dist/index.js",
   "engines": {
@@ -17,7 +18,7 @@
     "@modelcontextprotocol/sdk": "^1.30.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
-    "express": "^4.19.2",
+    "express": "^4.21.2",
     "zod": "^3.23.8"
   },
   "devDependencies": {

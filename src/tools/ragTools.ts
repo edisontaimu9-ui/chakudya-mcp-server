@@ -26,6 +26,12 @@ export function registerRagTools(server: McpServer) {
         context: z.enum(["both", "oasis", "thanzi"]).optional().default("both"),
         top_k: z.number().int().positive().max(20).optional().default(5),
       },
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: true,
+      },
     },
     safeTool("rag_retrieve", async ({ query, context, top_k }) => {
       const res = await chakudyaClient.post("/rag/retrieve", { query, context, top_k });
@@ -51,6 +57,12 @@ export function registerRagTools(server: McpServer) {
           .optional()
           .describe("Optional Oasis session id to personalize with that session's recalled memory"),
       },
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: true,
+      },
     },
     safeTool("search_guidelines", async ({ query, top_k, session_id }) => {
       const res = await chakudyaClient.post<RagAskResponseData>("/rag/ask", {
@@ -75,6 +87,12 @@ export function registerRagTools(server: McpServer) {
       inputSchema: {
         query: z.string().min(1),
         top_k: z.number().int().positive().max(20).optional().default(8),
+      },
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: true,
       },
     },
     safeTool("retrieve_evidence", async ({ query, top_k }) => {

@@ -68,6 +68,12 @@ export function registerFoodTools(server: McpServer) {
         category: z.string().optional().describe("Optional category filter"),
         limit: z.number().int().positive().max(100).optional().default(10),
       },
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: true,
+      },
     },
     safeTool("search_food", async ({ query, category, limit }) => {
       const local = await chakudyaClient.get<CnrFood[]>("/foods", { search: query, category, limit });
@@ -103,6 +109,12 @@ export function registerFoodTools(server: McpServer) {
       inputSchema: {
         food_id: z.union([z.string(), z.number()]).describe("The CNR food id from search_food"),
       },
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: true,
+      },
     },
     safeTool("get_food_details", async ({ food_id }) => {
       const res = await chakudyaClient.get<CnrFood>(`/foods/${food_id}`);
@@ -127,6 +139,12 @@ export function registerFoodTools(server: McpServer) {
           .number()
           .positive()
           .describe("Quantity actually consumed, in grams (or ml for liquids)"),
+      },
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: true,
       },
     },
     safeTool("calculate_nutrients", async ({ food_id, food_name, quantity_grams }) => {
@@ -160,6 +178,12 @@ export function registerFoodTools(server: McpServer) {
           )
           .min(1)
           .describe("Foods making up the meal"),
+      },
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: true,
       },
     },
     safeTool("analyze_meal", async ({ items }) => {
@@ -212,6 +236,12 @@ export function registerFoodTools(server: McpServer) {
       inputSchema: {
         barcode: z.string().min(6).describe("The product barcode, digits only"),
       },
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: true,
+      },
     },
     safeTool("barcode_lookup", async ({ barcode }) => {
       const packaged = await chakudyaClient.get("/packaged", { barcode, limit: 5 });
@@ -245,6 +275,12 @@ export function registerFoodTools(server: McpServer) {
         query: z.string().optional().describe("Free-text product name search"),
         barcode: z.string().optional(),
         limit: z.number().int().positive().max(50).optional().default(10),
+      },
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: true,
       },
     },
     safeTool("packaged_food_search", async ({ query, barcode, limit }) => {
