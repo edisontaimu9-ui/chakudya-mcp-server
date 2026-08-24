@@ -146,6 +146,18 @@ const ENTERAL_FEEDS: Array<{
   },
 ];
 
+const PRETERM_ENTERAL_REQUIREMENTS = {
+  fluid_ml_per_kg_per_day: "120-200 mL/kg/d",
+  energy_kcal_per_kg_per_day: "110-130 kcal/kg/day",
+};
+
+// ── Macronutrient distribution range (% of kcal) ────────────────────────────
+const MACRO_RANGES: Array<{ label: string; maxMonths: number | null; carb: [number, number]; fat: [number, number]; protein: [number, number] }> = [
+  { label: "Full-term infant", maxMonths: 12, carb: [35, 65], fat: [30, 55], protein: [7, 16] },
+  { label: "1-3 years", maxMonths: 36, carb: [45, 65], fat: [30, 40], protein: [5, 20] },
+  { label: "4-18 years", maxMonths: null, carb: [45, 65], fat: [25, 35], protein: [10, 30] },
+];
+
 function pick<T extends { maxMonth?: number | null; maxYear?: number | null; maxYears?: number | null; maxMonths?: number | null; maxG?: number | null }>(
   table: T[],
   value: number,
@@ -552,5 +564,81 @@ export function registerPediatricTools(server: McpServer) {
       result.disclaimer = PEDS_DISCLAIMER;
       return ok(result);
     })
+  );
+
+  // ── preterm_fluid_energy_requirements ─────────────────────────────────────
+  server.registerTool(
+    "preterm_fluid_energy_requirements",
+    {
+      title: "Preterm Infant Fluid & Energy Requirements",
+      description:
+        "Look up estimated enteral fluid and energy requirements for preterm infants (BND 415 Paediatric " +
+        "Medicine Resources). Returns the reference mL/kg/d and kcal/kg/day ranges, plus totals for the " +
+        "given weight using the range midpoints. Pair with pediatric_protein_requirements(source='preterm') " +
+        "for the matching protein target.",
+      inputSchema: {
+        weight_kg: z.number().positive(),
+      },
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    safeTool("preterm_fluid_energy_requirements", async ({ weight_kg }) => {
+      return ok({
+        source: "BND 415 Paediatric Medicine Resources — preterm infants (enteral)",
+        weight_kg,
+        fluid_ml_per_kg_per_day: PRETERM_ENTERAL_REQUIREMENTS.fluid_ml_per_kg_per_day,
+        fluid_ml_per_day_estimate: { low: Math.round(weight_kg * 120), high: Math.round(weight_kg * 200) },
+        energy_kcal_per_kg_per_day: PRETERM_ENTERAL_REQUIREMENTS.energy_kcal_per_kg_per_day,
+        energy_kcal_per_day_estimate: { low: Math.round(weight_kg * 110), high: Math.round(weight_kg * 130) },
+        disclaimer: PEDS_DISCLAIMER,
+      });
+    })
+  );
+
+  // ── macronutrient_distribution_check ──────────────────────────────────────
+  server.registerTool(
+    "macronutrient_distribution_check",
+    {
+      title: "Macronutrient Distribution Range Check",
+      description:
+        "Look up the DRI acceptable macronutrient distribution range (% of kcal from carbohydrate, fat, " +
+        "protein) for a pediatric age group (BND 415 Paediatric Medicine Resources), and optionally check " +
+        "whether a proposed diet's percentages fall inside those ranges.",
+      inputSchema: {
+        age_months: z.number().nonnegative().optional(),
+        age_years: z.number().nonnegative().optional(),
+        proposed_carb_percent: z.number().min(0).max(100).optional(),
+        proposed_fat_percent: z.number().min(0).max(100).optional(),
+        proposed_protein_percent: z.number().min(0).max(100).optional(),
+      },
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    safeTool(
+      "macronutrient_distribution_check",
+      async ({ age_months, age_years, proposed_carb_percent, proposed_fat_percent, proposed_protein_percent }) => {
+        const months = age_months ?? (age_years !== undefined ? age_years * 12 : undefined);
+        if (months === undefined) return { content: [{ type: "text" as const, text: "age_months or age_years is required." }], isError: true as const };
+
+        const row = pick(MACRO_RANGES, months, "maxMonths");
+        const inRange = (val: number | undefined, range: [number, number]) =>
+          val === undefined ? null : val >= range[0] && val <= range[1];
+
+        return ok({
+          source: "BND 415 Paediatric Medicine Resources — macronutrient distribution range",
+          age_bracket: row.label,
+          carbohydrate_percent_range: row.carb,
+          fat_percent_range: row.fat,
+          protein_percent_range: row.protein,
+          proposed_check:
+            proposed_carb_percent === undefined && proposed_fat_percent === undefined && proposed_protein_percent === undefined
+              ? null
+              : {
+                  carbohydrate_in_range: inRange(proposed_carb_percent, row.carb),
+                  fat_in_range: inRange(proposed_fat_percent, row.fat),
+                  protein_in_range: inRange(proposed_protein_percent, row.protein),
+                },
+          disclaimer: PEDS_DISCLAIMER,
+        });
+      }
+    )
   );
 }

@@ -64,6 +64,33 @@ function err(message: string) {
   return { content: [{ type: "text" as const, text: message }], isError: true as const };
 }
 
+// ── DRI EER reference values for active individuals (Table 2.2) ────────────
+const DRI_EER_TABLE_2_2: Array<{
+  life_stage: string;
+  criterion: string;
+  male_kcal_per_day: number | null;
+  female_kcal_per_day: number | null;
+  female_reference_note: string | null;
+}> = [
+  { life_stage: "Infants 0-6 months", criterion: "Energy expenditure + energy deposition", male_kcal_per_day: 570, female_kcal_per_day: 520, female_reference_note: "reference female age 3 months" },
+  { life_stage: "Infants 7-12 months", criterion: "Energy expenditure + energy deposition", male_kcal_per_day: 743, female_kcal_per_day: 676, female_reference_note: "reference female age 9 months" },
+  { life_stage: "Children 1-2 years", criterion: "Energy expenditure + energy deposition", male_kcal_per_day: 1046, female_kcal_per_day: 992, female_reference_note: "reference female age 24 months" },
+  { life_stage: "Children 3-8 years", criterion: "Energy expenditure + energy deposition", male_kcal_per_day: 1742, female_kcal_per_day: 1642, female_reference_note: "reference female age 6 years" },
+  { life_stage: "Children 9-13 years", criterion: "Energy expenditure + energy deposition", male_kcal_per_day: 2279, female_kcal_per_day: 2071, female_reference_note: "reference female age 11 years" },
+  { life_stage: "Children 14-18 years", criterion: "Energy expenditure + energy deposition", male_kcal_per_day: 3152, female_kcal_per_day: 2368, female_reference_note: "reference female age 16 years" },
+  { life_stage: "Adults >18 years", criterion: "Energy expenditure", male_kcal_per_day: 3067, female_kcal_per_day: 2403, female_reference_note: "reference age 19 years; subtract 10 kcal/day (men) or 7 kcal/day (women) per year of age above 19" },
+  { life_stage: "Pregnant women 14-18y, first trimester", criterion: "Adolescent female EER + 0", male_kcal_per_day: null, female_kcal_per_day: 2368, female_reference_note: "reference female age 16 years" },
+  { life_stage: "Pregnant women 14-18y, second trimester", criterion: "Adolescent female EER + change in TEE + pregnancy energy deposition", male_kcal_per_day: null, female_kcal_per_day: 2708, female_reference_note: "reference female age 16 years" },
+  { life_stage: "Pregnant women 14-18y, third trimester", criterion: "Adolescent female EER + change in TEE + pregnancy energy deposition", male_kcal_per_day: null, female_kcal_per_day: 2820, female_reference_note: "reference female age 16 years" },
+  { life_stage: "Pregnant women 19-50y, first trimester", criterion: "Adult female EER + 0", male_kcal_per_day: null, female_kcal_per_day: 2403, female_reference_note: "reference age 19 years" },
+  { life_stage: "Pregnant women 19-50y, second trimester", criterion: "Adult female EER + change in TEE + pregnancy energy deposition", male_kcal_per_day: null, female_kcal_per_day: 2743, female_reference_note: "reference age 19 years" },
+  { life_stage: "Pregnant women 19-50y, third trimester", criterion: "Adult female EER + change in TEE + pregnancy energy deposition", male_kcal_per_day: null, female_kcal_per_day: 2855, female_reference_note: "reference age 19 years" },
+  { life_stage: "Lactating women 14-18y, first 6 months", criterion: "Adolescent female EER + milk energy output - weight loss", male_kcal_per_day: null, female_kcal_per_day: 2698, female_reference_note: "reference female age 16 years" },
+  { life_stage: "Lactating women 14-18y, second 6 months", criterion: "Adolescent female EER + milk energy output - weight loss", male_kcal_per_day: null, female_kcal_per_day: 2768, female_reference_note: "reference female age 16 years" },
+  { life_stage: "Lactating women 19-50y, first 6 months", criterion: "Adult female EER + milk energy output - weight loss", male_kcal_per_day: null, female_kcal_per_day: 2733, female_reference_note: "reference age 19 years" },
+  { life_stage: "Lactating women 19-50y, second 6 months", criterion: "Adult female EER + milk energy output - weight loss", male_kcal_per_day: null, female_kcal_per_day: 2803, female_reference_note: "reference age 19 years" },
+];
+
 export function registerEnergyExpenditureTools(server: McpServer) {
   // ── iom_dri_eer_calculator ────────────────────────────────────────────────
   server.registerTool(
@@ -400,6 +427,167 @@ export function registerEnergyExpenditureTools(server: McpServer) {
           "RQ has been shown to correlate poorly with percent calories provided/required in hospitalized " +
           "patients (McClave et al, 2003) — use primarily to confirm the measurement is physiologically " +
           "plausible rather than to titrate feeding.",
+        disclaimer: DISCLAIMER,
+      });
+    })
+  );
+
+  // ── tee_activity_band_estimator ───────────────────────────────────────────
+  server.registerTool(
+    "tee_activity_band_estimator",
+    {
+      title: "TEE Activity-Band Estimator (Simplified)",
+      description:
+        "Estimate Total Energy Expenditure from a known/measured REE using the simplified activity-level " +
+        "banding method (Nelms/Ireton-Jones Ch.2): minimal activity = REE x 1.10-1.20, moderate = REE x " +
+        "1.25-1.40, strenuous = REE x 1.45-1.60. These ranges are described in the source as expert opinion " +
+        "rather than evidence-based, and are a quicker bedside alternative to the full IOM/DRI prediction " +
+        "equations when you already have a predicted or measured REE.",
+      inputSchema: {
+        ree_kcal_per_day: z.number().positive(),
+        activity_level: z.enum(["minimal", "moderate", "strenuous"]),
+      },
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    safeTool("tee_activity_band_estimator", async ({ ree_kcal_per_day, activity_level }) => {
+      const bands: Record<string, [number, number]> = {
+        minimal: [1.1, 1.2],
+        moderate: [1.25, 1.4],
+        strenuous: [1.45, 1.6],
+      };
+      const [low, high] = bands[activity_level];
+      return ok({
+        ree_kcal_per_day,
+        activity_level,
+        multiplier_range: [low, high],
+        tee_kcal_per_day_estimate: {
+          low: Math.round(ree_kcal_per_day * low),
+          high: Math.round(ree_kcal_per_day * high),
+        },
+        note: "Ranges are expert opinion rather than evidence-based (Nelms/Ireton-Jones Ch.2).",
+        disclaimer: DISCLAIMER,
+      });
+    })
+  );
+
+  // ── fever_stress_ree_adjustment ───────────────────────────────────────────
+  server.registerTool(
+    "fever_stress_ree_adjustment",
+    {
+      title: "Fever REE Adjustment",
+      description:
+        "Adjust a baseline REE for fever, per the classic Hardy & DuBois relationship cited in " +
+        "Nelms/Ireton-Jones Ch.2: REE increases ~7% for each degree F above 98.6°F, or ~13% for each " +
+        "degree C above 37°C. Provide body_temp_f or body_temp_c. Returns 0% adjustment if temperature is " +
+        "at or below normal.",
+      inputSchema: {
+        ree_kcal_per_day: z.number().positive(),
+        body_temp_f: z.number().optional(),
+        body_temp_c: z.number().optional(),
+      },
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    safeTool("fever_stress_ree_adjustment", async ({ ree_kcal_per_day, body_temp_f, body_temp_c }) => {
+      if (body_temp_f === undefined && body_temp_c === undefined) {
+        return err("Provide body_temp_f or body_temp_c.");
+      }
+      let percentIncrease: number;
+      let basis: string;
+      if (body_temp_f !== undefined) {
+        const degreesAbove = Math.max(0, body_temp_f - 98.6);
+        percentIncrease = degreesAbove * 7;
+        basis = `${degreesAbove.toFixed(1)}°F above 98.6°F x 7%/°F`;
+      } else {
+        const degreesAbove = Math.max(0, (body_temp_c as number) - 37);
+        percentIncrease = degreesAbove * 13;
+        basis = `${degreesAbove.toFixed(1)}°C above 37°C x 13%/°C`;
+      }
+      const adjustedRee = ree_kcal_per_day * (1 + percentIncrease / 100);
+      return ok({
+        ree_kcal_per_day,
+        percent_increase: Math.round(percentIncrease * 10) / 10,
+        basis,
+        adjusted_ree_kcal_per_day: Math.round(adjustedRee),
+        disclaimer: DISCLAIMER,
+      });
+    })
+  );
+
+  // ── atwater_food_energy_calculator ────────────────────────────────────────
+  server.registerTool(
+    "atwater_food_energy_calculator",
+    {
+      title: "Atwater Food Energy Calculator",
+      description:
+        "Compute total kcal and macronutrient % breakdown from grams of protein, fat, carbohydrate, and " +
+        "(optionally) alcohol, using the Atwater factors (4/9/4/7 kcal/g respectively) from " +
+        "Nelms/Ireton-Jones Ch.2. Useful for a manually specified recipe or formulated feed, as opposed to " +
+        "calculate_nutrients which pulls per-100g values from the Chakudya food database.",
+      inputSchema: {
+        protein_g: z.number().nonnegative().default(0),
+        fat_g: z.number().nonnegative().default(0),
+        carbohydrate_g: z.number().nonnegative().default(0),
+        alcohol_g: z.number().nonnegative().default(0),
+      },
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    safeTool("atwater_food_energy_calculator", async ({ protein_g, fat_g, carbohydrate_g, alcohol_g }) => {
+      const proteinKcal = protein_g * 4;
+      const fatKcal = fat_g * 9;
+      const carbKcal = carbohydrate_g * 4;
+      const alcoholKcal = alcohol_g * 7;
+      const totalKcal = proteinKcal + fatKcal + carbKcal + alcoholKcal;
+
+      const pct = (kcal: number) => (totalKcal > 0 ? Math.round((kcal / totalKcal) * 1000) / 10 : 0);
+
+      return ok({
+        protein_g,
+        fat_g,
+        carbohydrate_g,
+        alcohol_g,
+        protein_kcal: Math.round(proteinKcal * 10) / 10,
+        fat_kcal: Math.round(fatKcal * 10) / 10,
+        carbohydrate_kcal: Math.round(carbKcal * 10) / 10,
+        alcohol_kcal: Math.round(alcoholKcal * 10) / 10,
+        total_kcal: Math.round(totalKcal * 10) / 10,
+        percent_from_protein: pct(proteinKcal),
+        percent_from_fat: pct(fatKcal),
+        percent_from_carbohydrate: pct(carbKcal),
+        percent_from_alcohol: pct(alcoholKcal),
+        disclaimer: DISCLAIMER,
+      });
+    })
+  );
+
+  // ── dri_eer_reference_lookup ──────────────────────────────────────────────
+  server.registerTool(
+    "dri_eer_reference_lookup",
+    {
+      title: "DRI EER Reference Lookup (Table 2.2)",
+      description:
+        "Look up the published DRI reference EER (kcal/day) for a healthy, active person of reference " +
+        "height/weight at a given life stage (Nelms/Ireton-Jones Table 2.2) — infants through adults, " +
+        "pregnant, and lactating women. This is a quick sanity-check reference table, not a per-patient " +
+        "calculation; use iom_dri_eer_calculator for an individualized estimate from actual age/weight/" +
+        "height/activity level. Pass a search term matching part of a life stage label (e.g. 'adult', " +
+        "'3-8', 'lactating 19-50 first'); omit to return the full table.",
+      inputSchema: {
+        life_stage_search: z.string().optional(),
+      },
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    safeTool("dri_eer_reference_lookup", async ({ life_stage_search }) => {
+      const rows = life_stage_search
+        ? DRI_EER_TABLE_2_2.filter((r) => r.life_stage.toLowerCase().includes(life_stage_search.toLowerCase()))
+        : DRI_EER_TABLE_2_2;
+
+      if (rows.length === 0) {
+        return err(`No life stage matched "${life_stage_search}". Omit life_stage_search to see the full table.`);
+      }
+
+      return ok({
+        source: "IOM/DRI (2002/2005) Table 2.2 — reference EER for active individuals at reference height/weight",
+        results: rows,
         disclaimer: DISCLAIMER,
       });
     })

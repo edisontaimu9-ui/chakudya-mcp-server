@@ -32,7 +32,7 @@ transport wraps it.
 
 ## Tools
 
-All 24 tools either call your existing Chakudya Worker over HTTPS, or are pure in-process calculation/table
+All 30 tools either call your existing Chakudya Worker over HTTPS, or are pure in-process calculation/table
 lookups — none of them touch Supabase, Cohere, or Groq directly, and none of them need `ADMIN_API_KEY`
 (every route they use is public).
 
@@ -62,6 +62,12 @@ lookups — none of them touch Supabase, Cohere, or Groq directly, and none of t
 | `met_activity_energy_calculator` | none — pure MET x weight x duration math |
 | `alcohol_kcal_calculator` | none — pure volume x proof math |
 | `respiratory_quotient_interpreter` | none — pure RQ reference-value interpretation |
+| `preterm_fluid_energy_requirements` | none — pure preterm fluid/energy table lookup |
+| `macronutrient_distribution_check` | none — pure DRI macronutrient % range table lookup |
+| `tee_activity_band_estimator` | none — pure REE x activity-band multiplier math |
+| `fever_stress_ree_adjustment` | none — pure fever REE adjustment math |
+| `atwater_food_energy_calculator` | none — pure Atwater factor (4/9/4/7) math |
+| `dri_eer_reference_lookup` | none — pure DRI Table 2.2 reference table lookup |
 
 `disease_information` and `medicine_information` always return an educational disclaimer alongside the
 answer and are prompted to avoid diagnosis/prescribing language — but they're still LLM-generated text
