@@ -13,6 +13,8 @@ import hcfaGirlsLms from "../data/who/hcfa-girls-lms.json" with { type: "json" }
 import hcfaBoysLms from "../data/who/hcfa-boys-lms.json" with { type: "json" };
 import wflGirlsLms from "../data/who/wfl-girls-lms.json" with { type: "json" };
 import wflBoysLms from "../data/who/wfl-boys-lms.json" with { type: "json" };
+import wfhGirlsLms from "../data/who/wfh-girls-lms.json" with { type: "json" };
+import wfhBoysLms from "../data/who/wfh-boys-lms.json" with { type: "json" };
 
 /**
  * WHO growth standard z-score / percentile calculator (LMS method).
@@ -20,15 +22,17 @@ import wflBoysLms from "../data/who/wfl-boys-lms.json" with { type: "json" };
  * Two source datasets are combined here:
  * - WHO Child Growth Standards (birth-5y), expanded tables: weight-for-age,
  *   height/length-for-age, BMI-for-age, head-circumference-for-age
- *   (daily-resolution, keyed by age), and weight-for-length (keyed by the
- *   child's length in cm, not age — WHO indexes this standard by length).
+ *   (daily-resolution, keyed by age); weight-for-length (keyed by the
+ *   child's recumbent length in cm, 45-110cm); and weight-for-height
+ *   (keyed by standing height in cm, 65-120cm) — WHO indexes these last
+ *   two by body size, not age.
  *   https://www.who.int/tools/child-growth-standards/standards
  * - WHO Reference 2007 (5-19y), monthly-resolution expanded tables:
  *   BMI-for-age. https://www.who.int/tools/growth-reference-data-for-5to19-years
  *
- * Additional standards (weight-for-height, keyed by height in cm for the
- * 2-5y range) will be added here once their expanded LMS tables are
- * supplied — do not fabricate LMS values for standards not yet loaded.
+ * All planned standards are now loaded. If further standards are ever
+ * needed, do not fabricate LMS values for ones not yet loaded — add them
+ * here the same way once their expanded LMS tables are supplied.
  *
  * Pure calculation — no Chakudya API calls. Educational/clinical-support
  * estimate only, not a substitute for a clinician's growth assessment
@@ -44,7 +48,7 @@ const DISCLAIMER =
 // not always contiguous or integer-stepped.
 type LmsRow = [number, number, number, number];
 
-type KeyKind = "age_day" | "age_month" | "length_cm";
+type KeyKind = "age_day" | "age_month" | "length_cm" | "height_cm";
 
 interface StandardEntry {
   keyKind: KeyKind;
@@ -89,6 +93,12 @@ const LMS_TABLES: Record<string, StandardEntry> = {
     female: wflGirlsLms as unknown as LmsRow[],
     male: wflBoysLms as unknown as LmsRow[],
     rangeLabel: "recumbent length 45-110 cm, i.e. roughly birth to 2 years (WHO Child Growth Standards)",
+  },
+  weight_for_height: {
+    keyKind: "height_cm",
+    female: wfhGirlsLms as unknown as LmsRow[],
+    male: wfhBoysLms as unknown as LmsRow[],
+    rangeLabel: "standing height 65-120 cm, i.e. roughly 2 to 5 years (WHO Child Growth Standards)",
   },
 };
 
@@ -148,7 +158,7 @@ function classify(z: number, standard: string): string {
     if (z < -2) return "stunted";
     return "normal";
   }
-  if (standard === "bmi_for_age_0_5y" || standard === "weight_for_length") {
+  if (standard === "bmi_for_age_0_5y" || standard === "weight_for_length" || standard === "weight_for_height") {
     if (z < -3) return "severely wasted";
     if (z < -2) return "wasted";
     if (z > 3) return "obese";
@@ -195,10 +205,10 @@ export function registerWhoGrowthTools(server: McpServer) {
         `rangeLabel in the tool result for its exact source and valid range (0-5y standards use the WHO ` +
         `Child Growth Standards; bmi_for_age_5_19y uses the separate WHO Reference 2007 dataset). Most ` +
         `standards are keyed by age — provide age_days, age_months, or age_years (any one). ` +
-        `weight_for_length is instead keyed by the child's recumbent length in cm — provide length_or_height_cm ` +
-        `instead of an age. More standards (weight-for-height, keyed by standing height) will be added as ` +
-        `their reference tables are loaded — calling this tool with an unsupported standard or an ` +
-        `out-of-range key returns an error rather than a guess.`,
+        `weight_for_length and weight_for_height are instead keyed by the child's body size — provide ` +
+        `length_or_height_cm (recumbent length for weight_for_length, standing height for weight_for_height) ` +
+        `instead of an age. Calling this tool with an unsupported standard or an out-of-range key returns ` +
+        `an error rather than a guess.`,
       inputSchema: {
         standard: z.enum(AVAILABLE_STANDARDS as [string, ...string[]]),
         sex: z.enum(["male", "female"]),
@@ -206,7 +216,7 @@ export function registerWhoGrowthTools(server: McpServer) {
           .number()
           .positive()
           .describe(
-            "The measurement in the standard's units (kg for weight_for_age / weight_for_length, cm for height_for_age / head_circumference_for_age, kg/m^2 for bmi_for_age_0_5y / bmi_for_age_5_19y)"
+            "The measurement in the standard's units (kg for weight_for_age / weight_for_length / weight_for_height, cm for height_for_age / head_circumference_for_age, kg/m^2 for bmi_for_age_0_5y / bmi_for_age_5_19y)"
           ),
         age_days: z.number().nonnegative().optional(),
         age_months: z.number().nonnegative().optional(),
@@ -215,7 +225,9 @@ export function registerWhoGrowthTools(server: McpServer) {
           .number()
           .positive()
           .optional()
-          .describe("Required instead of age for length/height-keyed standards (currently: weight_for_length)"),
+          .describe(
+            "Required instead of age for body-size-keyed standards (weight_for_length: recumbent length in cm; weight_for_height: standing height in cm)"
+          ),
       },
       annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
@@ -238,7 +250,7 @@ export function registerWhoGrowthTools(server: McpServer) {
         let key: number;
         let resultAgeDays: number | null = null;
 
-        if (entry.keyKind === "length_cm") {
+        if (entry.keyKind === "length_cm" || entry.keyKind === "height_cm") {
           if (length_or_height_cm === undefined) {
             return {
               content: [
@@ -277,7 +289,8 @@ export function registerWhoGrowthTools(server: McpServer) {
           source_range: entry.rangeLabel,
           sex,
           age_days: resultAgeDays !== null ? Math.round(resultAgeDays * 10) / 10 : null,
-          length_or_height_cm: entry.keyKind === "length_cm" ? length_or_height_cm : null,
+          length_or_height_cm:
+            entry.keyKind === "length_cm" || entry.keyKind === "height_cm" ? length_or_height_cm : null,
           value,
           z_score: Math.round(zScore * 100) / 100,
           percentile: Math.round(percentile * 10) / 10,
