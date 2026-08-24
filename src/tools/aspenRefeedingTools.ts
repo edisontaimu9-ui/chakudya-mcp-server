@@ -102,10 +102,10 @@ export function registerAspenRefeedingTools(server: McpServer): void {
               "levels, or minimally low/normal with recent low levels needing significant/multiple-dose " +
               "supplementation. Note electrolytes may be normal despite total-body deficiency."
           ),
-        subcutaneous_fat_loss: z.enum(["none", "moderate", "severe"]).optional(),
-        muscle_mass_loss: z.enum(["none", "moderate", "severe"]).optional(),
+        subcutaneous_fat_loss: z.enum(["none", "moderate", "significant"]).optional(),
+        muscle_mass_loss: z.enum(["none", "moderate", "significant"]).optional(),
         comorbidity_severity: z
-          .enum(["none", "moderate", "severe"])
+          .enum(["none", "moderate", "significant"])
           .optional()
           .describe(
             "Severity of a higher-RS-risk comorbidity (e.g. chronic alcohol/drug use disorder, eating " +
@@ -258,13 +258,13 @@ export function registerAspenRefeedingTools(server: McpServer): void {
               "significant: moderately/significantly abnormal or down to 25-50% below lower limit of " +
               "normal (the table gives the same wording for both moderate and significant columns)."
           ),
-        comorbidity_severity: z.enum(["none", "mild", "moderate", "severe"]).optional(),
+        comorbidity_severity: z.enum(["none", "mild", "moderate", "significant"]).optional(),
         subcutaneous_fat_loss: z
-          .enum(["none", "mild", "moderate", "severe"])
+          .enum(["none", "mild", "moderate", "significant"])
           .optional()
           .describe("Direct clinical assessment; alternatively supply muac_z_score"),
         muscle_mass_loss: z
-          .enum(["none", "moderate", "severe"])
+          .enum(["none", "moderate", "significant"])
           .optional()
           .describe(
             "Direct clinical assessment; note ASPEN gives no 'mild' criterion for muscle mass loss. " +
