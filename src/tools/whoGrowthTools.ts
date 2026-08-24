@@ -9,6 +9,8 @@ import bfaGirlsLms from "../data/who/bfa-girls-lms.json" with { type: "json" };
 import bfaBoysLms from "../data/who/bfa-boys-lms.json" with { type: "json" };
 import bmi5to19GirlsLms from "../data/who/bmi5to19-girls-lms.json" with { type: "json" };
 import bmi5to19BoysLms from "../data/who/bmi5to19-boys-lms.json" with { type: "json" };
+import hcfaGirlsLms from "../data/who/hcfa-girls-lms.json" with { type: "json" };
+import hcfaBoysLms from "../data/who/hcfa-boys-lms.json" with { type: "json" };
 
 /**
  * WHO growth standard z-score / percentile calculator (LMS method).
@@ -20,9 +22,9 @@ import bmi5to19BoysLms from "../data/who/bmi5to19-boys-lms.json" with { type: "j
  * - WHO Reference 2007 (5-19y), monthly-resolution expanded tables:
  *   BMI-for-age. https://www.who.int/tools/growth-reference-data-for-5to19-years
  *
- * Additional standards (head-circumference-for-age, weight-for-length/
- * height) will be added here once their expanded LMS tables are supplied
- * — do not fabricate LMS values for standards not yet loaded.
+ * Additional standards (weight-for-length/height) will be added here once
+ * their expanded LMS tables are supplied — do not fabricate LMS values for
+ * standards not yet loaded.
  *
  * Pure calculation — no Chakudya API calls. Educational/clinical-support
  * estimate only, not a substitute for a clinician's growth assessment
@@ -70,6 +72,12 @@ const LMS_TABLES: Record<string, StandardEntry> = {
     female: bmi5to19GirlsLms as unknown as LmsRow[],
     male: bmi5to19BoysLms as unknown as LmsRow[],
     ageRangeLabel: "5 to 19 years (WHO Reference 2007)",
+  },
+  head_circumference_for_age: {
+    unit: "day",
+    female: hcfaGirlsLms as unknown as LmsRow[],
+    male: hcfaBoysLms as unknown as LmsRow[],
+    ageRangeLabel: "birth to 5 years (WHO Child Growth Standards)",
   },
 };
 
@@ -143,6 +151,13 @@ function classify(z: number, standard: string): string {
     if (z > 1) return "overweight";
     return "normal";
   }
+  if (standard === "head_circumference_for_age") {
+    if (z < -3) return "severe microcephaly";
+    if (z < -2) return "microcephaly";
+    if (z > 3) return "severe macrocephaly";
+    if (z > 2) return "macrocephaly";
+    return "normal";
+  }
   if (z < -3) return "severely low";
   if (z < -2) return "low";
   if (z > 3) return "very high";
@@ -167,7 +182,7 @@ export function registerWhoGrowthTools(server: McpServer) {
         `LMS method. Currently supports: ${AVAILABLE_STANDARDS.join(", ")} — see each standard's ` +
         `ageRangeLabel in the tool result for its exact source and valid age range (0-5y standards use the ` +
         `WHO Child Growth Standards; bmi_for_age_5_19y uses the separate WHO Reference 2007 dataset). More ` +
-        `standards (head-circumference-for-age, weight-for-length/height) will be added as their reference ` +
+        `standards (weight-for-length/height) will be added as their reference ` +
         `tables are loaded — calling this tool with an unsupported standard or an out-of-range age returns ` +
         `an error rather than a guess. Provide age as age_days, age_months, or age_years (any one).`,
       inputSchema: {
@@ -177,7 +192,7 @@ export function registerWhoGrowthTools(server: McpServer) {
           .number()
           .positive()
           .describe(
-            "The measurement in the standard's units (kg for weight_for_age, cm for height_for_age, kg/m^2 for bmi_for_age_0_5y / bmi_for_age_5_19y)"
+            "The measurement in the standard's units (kg for weight_for_age, cm for height_for_age / head_circumference_for_age, kg/m^2 for bmi_for_age_0_5y / bmi_for_age_5_19y)"
           ),
         age_days: z.number().nonnegative().optional(),
         age_months: z.number().nonnegative().optional(),
