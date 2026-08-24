@@ -5,6 +5,8 @@ import wfaGirlsLms from "../data/who/wfa-girls-lms.json" with { type: "json" };
 import wfaBoysLms from "../data/who/wfa-boys-lms.json" with { type: "json" };
 import lhfaGirlsLms from "../data/who/lhfa-girls-lms.json" with { type: "json" };
 import lhfaBoysLms from "../data/who/lhfa-boys-lms.json" with { type: "json" };
+import bfaGirlsLms from "../data/who/bfa-girls-lms.json" with { type: "json" };
+import bfaBoysLms from "../data/who/bfa-boys-lms.json" with { type: "json" };
 
 /**
  * WHO Child Growth Standards z-score / percentile calculator (LMS method).
@@ -13,10 +15,12 @@ import lhfaBoysLms from "../data/who/lhfa-boys-lms.json" with { type: "json" };
  * give daily L, M, S parameters from birth to 5 years (1856 days), by sex.
  * https://www.who.int/tools/child-growth-standards/standards
  *
- * Loaded so far: weight-for-age, height/length-for-age. Additional standards
- * (BMI-for-age, head-circumference-for-age, weight-for-length/height) will
- * be added here once their expanded LMS tables are supplied — do not
- * fabricate LMS values for standards not yet loaded.
+ * Loaded so far: weight-for-age, height/length-for-age, BMI-for-age (0-5y
+ * WHO Child Growth Standards only — the WHO Reference 2007 BMI-for-age for
+ * ages 5-19y is a separate dataset not yet loaded). Additional standards
+ * (head-circumference-for-age, weight-for-length/height) will be added
+ * here once their expanded LMS tables are supplied — do not fabricate
+ * LMS values for standards not yet loaded.
  *
  * Pure calculation — no Chakudya API calls. Educational/clinical-support
  * estimate only, not a substitute for a clinician's growth assessment
@@ -39,6 +43,10 @@ const LMS_TABLES: Record<string, Record<"male" | "female", LmsRow[]>> = {
   height_for_age: {
     female: lhfaGirlsLms as unknown as LmsRow[],
     male: lhfaBoysLms as unknown as LmsRow[],
+  },
+  bmi_for_age_0_5y: {
+    female: bfaGirlsLms as unknown as LmsRow[],
+    male: bfaBoysLms as unknown as LmsRow[],
   },
 };
 
@@ -91,6 +99,14 @@ function classify(z: number, standard: string): string {
     if (z < -2) return "stunted";
     return "normal";
   }
+  if (standard === "bmi_for_age_0_5y") {
+    if (z < -3) return "severely wasted";
+    if (z < -2) return "wasted";
+    if (z > 3) return "obese";
+    if (z > 2) return "overweight";
+    if (z > 1) return "possible risk of overweight";
+    return "normal";
+  }
   if (z < -3) return "severely low";
   if (z < -2) return "low";
   if (z > 3) return "very high";
@@ -112,15 +128,16 @@ export function registerWhoGrowthTools(server: McpServer) {
       title: "WHO Child Growth Standards Z-Score Calculator",
       description:
         `Compute a WHO Child Growth Standards z-score and approximate percentile for a measurement, using ` +
-        `the LMS method against WHO's daily-resolution expanded tables (birth to 5 years). Currently ` +
-        `supports: ${AVAILABLE_STANDARDS.join(", ")}. More standards (height/length-for-age, BMI-for-age, ` +
-        `head-circumference-for-age, weight-for-length/height) will be added as their reference tables are ` +
-        `loaded — calling this tool with an unsupported standard returns an error rather than a guess. ` +
+        `the LMS method against WHO's daily-resolution expanded tables (birth to 5 years for weight/height/ ` +
+        `BMI). Currently supports: ${AVAILABLE_STANDARDS.join(", ")}. More standards ` +
+        `(head-circumference-for-age, weight-for-length/height, and the WHO Reference 2007 BMI-for-age for ` +
+        `ages 5-19y) will be added as their reference tables are loaded — calling this tool with an ` +
+        `unsupported standard returns an error rather than a guess. ` +
         `Provide age as age_days, age_months, or age_years (any one).`,
       inputSchema: {
         standard: z.enum(AVAILABLE_STANDARDS as [string, ...string[]]),
         sex: z.enum(["male", "female"]),
-        value: z.number().positive().describe("The measurement in the standard's units (kg for weight_for_age, cm for height_for_age)"),
+        value: z.number().positive().describe("The measurement in the standard's units (kg for weight_for_age, cm for height_for_age, kg/m^2 for bmi_for_age_0_5y)"),
         age_days: z.number().nonnegative().optional(),
         age_months: z.number().nonnegative().optional(),
         age_years: z.number().nonnegative().optional(),
