@@ -32,8 +32,9 @@ transport wraps it.
 
 ## Tools
 
-All 15 tools call your existing Chakudya Worker over HTTPS — none of them touch Supabase, Cohere, or
-Groq directly, and none of them need `ADMIN_API_KEY` (every route they use is public).
+All 24 tools either call your existing Chakudya Worker over HTTPS, or are pure in-process calculation/table
+lookups — none of them touch Supabase, Cohere, or Groq directly, and none of them need `ADMIN_API_KEY`
+(every route they use is public).
 
 | Tool | Chakudya route(s) used |
 |---|---|
@@ -52,11 +53,26 @@ Groq directly, and none of them need `ADMIN_API_KEY` (every route they use is pu
 | `retrieve_evidence` | `POST /rag/ask` (`context: "both"`, higher `top_k`) |
 | `disease_information` | `POST /rag/ask`, query framed for educational disease overview |
 | `medicine_information` | `POST /rag/ask`, query explicitly instructed to exclude dosing/prescribing |
+| `pediatric_fluid_requirements` | none — pure Holliday-Segar math |
+| `pediatric_energy_requirements` | none — pure Schofield/WHO BMR + DRI/FAO 2004 + DRI/IOM 2006 math |
+| `pediatric_protein_requirements` | none — pure IOM 2005 / ASPEN sick-child / preterm table lookup |
+| `pediatric_growth_velocity` | none — pure ASPEN handbook growth-velocity table lookup |
+| `pediatric_enteral_feed_advancement` | none — pure enteral feed protocol table lookup |
+| `iom_dri_eer_calculator` | none — pure IOM/DRI (2002/2005) EER prediction-equation math, all life stages |
+| `met_activity_energy_calculator` | none — pure MET x weight x duration math |
+| `alcohol_kcal_calculator` | none — pure volume x proof math |
+| `respiratory_quotient_interpreter` | none — pure RQ reference-value interpretation |
 
 `disease_information` and `medicine_information` always return an educational disclaimer alongside the
 answer and are prompted to avoid diagnosis/prescribing language — but they're still LLM-generated text
 grounded on whatever's in your RAG knowledge base, not a verified medical reference. Treat them as a
 starting point for a learner, same as the rest of the RAG-backed tools.
+
+`pediatric_*` tools (source: BND 415 Clinical Nutrition — Paediatric Medicine Resources) and
+`iom_dri_eer_calculator`/`met_activity_energy_calculator`/`alcohol_kcal_calculator`/
+`respiratory_quotient_interpreter` (source: Nelms/Ireton-Jones, *Nutrition Therapy and Pathophysiology*,
+Ch. 2) are pure calculation/lookup tools — no network call, no CNR data dependency. Same estimate-only
+caveat applies: not a substitute for individualized clinical assessment or measured indirect calorimetry.
 
 ## Project layout
 
@@ -72,7 +88,9 @@ src/
 │   ├── foodTools.ts
 │   ├── clinicalTools.ts
 │   ├── ragTools.ts
-│   └── educationTools.ts
+│   ├── educationTools.ts
+│   ├── pediatricTools.ts        Pediatric fluid/energy/protein/growth/enteral-feed calculators
+│   └── energyExpenditureTools.ts  IOM/DRI EER, MET activity, alcohol kcal, RQ interpreter
 └── utils/
     ├── logger.ts             Structured JSON logging
     └── toolResult.ts         Consistent success/error shaping for every tool handler
