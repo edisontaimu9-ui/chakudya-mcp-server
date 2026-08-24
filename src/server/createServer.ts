@@ -6,6 +6,7 @@ import { registerEducationTools } from "../tools/educationTools.js";
 import { registerPediatricTools } from "../tools/pediatricTools.js";
 import { registerEnergyExpenditureTools } from "../tools/energyExpenditureTools.js";
 import { registerWhoGrowthTools } from "../tools/whoGrowthTools.js";
+import { registerNacsClassificationTools } from "../tools/nacsClassificationTools.js";
 
 /**
  * Builds a new McpServer instance with every Chakudya tool registered.
@@ -28,6 +29,7 @@ export function createChakudyaMcpServer(): McpServer {
   registerPediatricTools(server);
   registerEnergyExpenditureTools(server);
   registerWhoGrowthTools(server);
+  registerNacsClassificationTools(server);
 
   return server;
 }
