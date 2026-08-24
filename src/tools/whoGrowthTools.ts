@@ -3,6 +3,8 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { ok, safeTool } from "../utils/toolResult.js";
 import wfaGirlsLms from "../data/who/wfa-girls-lms.json" with { type: "json" };
 import wfaBoysLms from "../data/who/wfa-boys-lms.json" with { type: "json" };
+import lhfaGirlsLms from "../data/who/lhfa-girls-lms.json" with { type: "json" };
+import lhfaBoysLms from "../data/who/lhfa-boys-lms.json" with { type: "json" };
 
 /**
  * WHO Child Growth Standards z-score / percentile calculator (LMS method).
@@ -11,11 +13,10 @@ import wfaBoysLms from "../data/who/wfa-boys-lms.json" with { type: "json" };
  * give daily L, M, S parameters from birth to 5 years (1856 days), by sex.
  * https://www.who.int/tools/child-growth-standards/standards
  *
- * Only weight-for-age is loaded so far. Additional standards (length/
- * height-for-age, BMI-for-age, head-circumference-for-age,
- * weight-for-length/height) will be added here once their expanded LMS
- * tables are supplied — do not fabricate LMS values for standards not
- * yet loaded.
+ * Loaded so far: weight-for-age, height/length-for-age. Additional standards
+ * (BMI-for-age, head-circumference-for-age, weight-for-length/height) will
+ * be added here once their expanded LMS tables are supplied — do not
+ * fabricate LMS values for standards not yet loaded.
  *
  * Pure calculation — no Chakudya API calls. Educational/clinical-support
  * estimate only, not a substitute for a clinician's growth assessment
@@ -34,6 +35,10 @@ const LMS_TABLES: Record<string, Record<"male" | "female", LmsRow[]>> = {
   weight_for_age: {
     female: wfaGirlsLms as unknown as LmsRow[],
     male: wfaBoysLms as unknown as LmsRow[],
+  },
+  height_for_age: {
+    female: lhfaGirlsLms as unknown as LmsRow[],
+    male: lhfaBoysLms as unknown as LmsRow[],
   },
 };
 
@@ -81,6 +86,11 @@ function classify(z: number, standard: string): string {
     if (z > 2) return "possible growth/overweight concern (weight-for-age is not used alone to assess overweight)";
     return "normal";
   }
+  if (standard === "height_for_age") {
+    if (z < -3) return "severely stunted";
+    if (z < -2) return "stunted";
+    return "normal";
+  }
   if (z < -3) return "severely low";
   if (z < -2) return "low";
   if (z > 3) return "very high";
@@ -110,7 +120,7 @@ export function registerWhoGrowthTools(server: McpServer) {
       inputSchema: {
         standard: z.enum(AVAILABLE_STANDARDS as [string, ...string[]]),
         sex: z.enum(["male", "female"]),
-        value: z.number().positive().describe("The measurement, in the standard's units (e.g. kg for weight)"),
+        value: z.number().positive().describe("The measurement in the standard's units (kg for weight_for_age, cm for height_for_age)"),
         age_days: z.number().nonnegative().optional(),
         age_months: z.number().nonnegative().optional(),
         age_years: z.number().nonnegative().optional(),

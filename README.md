@@ -68,7 +68,7 @@ lookups — none of them touch Supabase, Cohere, or Groq directly, and none of t
 | `fever_stress_ree_adjustment` | none — pure fever REE adjustment math |
 | `atwater_food_energy_calculator` | none — pure Atwater factor (4/9/4/7) math |
 | `dri_eer_reference_lookup` | none — pure DRI Table 2.2 reference table lookup |
-| `who_growth_zscore` | none — pure WHO Child Growth Standards LMS z-score/percentile calculation |
+| `who_growth_zscore` | none — pure WHO Child Growth Standards LMS z-score/percentile calculation (weight-for-age, height-for-age) |
 
 `disease_information` and `medicine_information` always return an educational disclaimer alongside the
 answer and are prompted to avoid diagnosis/prescribing language — but they're still LLM-generated text
