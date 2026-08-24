@@ -9,6 +9,7 @@ import { registerWhoGrowthTools } from "../tools/whoGrowthTools.js";
 import { registerNacsClassificationTools } from "../tools/nacsClassificationTools.js";
 import { registerAspenRefeedingTools } from "../tools/aspenRefeedingTools.js";
 import { registerGlimMalnutritionTools } from "../tools/glimMalnutritionTools.js";
+import { registerSgaAssessmentTools } from "../tools/sgaAssessmentTools.js";
 
 /**
  * Builds a new McpServer instance with every Chakudya tool registered.
@@ -34,6 +35,7 @@ export function createChakudyaMcpServer(): McpServer {
   registerNacsClassificationTools(server);
   registerAspenRefeedingTools(server);
   registerGlimMalnutritionTools(server);
+  registerSgaAssessmentTools(server);
 
   return server;
 }
