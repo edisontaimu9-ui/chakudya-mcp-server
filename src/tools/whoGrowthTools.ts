@@ -11,20 +11,24 @@ import bmi5to19GirlsLms from "../data/who/bmi5to19-girls-lms.json" with { type: 
 import bmi5to19BoysLms from "../data/who/bmi5to19-boys-lms.json" with { type: "json" };
 import hcfaGirlsLms from "../data/who/hcfa-girls-lms.json" with { type: "json" };
 import hcfaBoysLms from "../data/who/hcfa-boys-lms.json" with { type: "json" };
+import wflGirlsLms from "../data/who/wfl-girls-lms.json" with { type: "json" };
+import wflBoysLms from "../data/who/wfl-boys-lms.json" with { type: "json" };
 
 /**
  * WHO growth standard z-score / percentile calculator (LMS method).
  *
  * Two source datasets are combined here:
- * - WHO Child Growth Standards (birth-5y), daily-resolution expanded
- *   tables: weight-for-age, height/length-for-age, BMI-for-age.
+ * - WHO Child Growth Standards (birth-5y), expanded tables: weight-for-age,
+ *   height/length-for-age, BMI-for-age, head-circumference-for-age
+ *   (daily-resolution, keyed by age), and weight-for-length (keyed by the
+ *   child's length in cm, not age — WHO indexes this standard by length).
  *   https://www.who.int/tools/child-growth-standards/standards
  * - WHO Reference 2007 (5-19y), monthly-resolution expanded tables:
  *   BMI-for-age. https://www.who.int/tools/growth-reference-data-for-5to19-years
  *
- * Additional standards (weight-for-length/height) will be added here once
- * their expanded LMS tables are supplied — do not fabricate LMS values for
- * standards not yet loaded.
+ * Additional standards (weight-for-height, keyed by height in cm for the
+ * 2-5y range) will be added here once their expanded LMS tables are
+ * supplied — do not fabricate LMS values for standards not yet loaded.
  *
  * Pure calculation — no Chakudya API calls. Educational/clinical-support
  * estimate only, not a substitute for a clinician's growth assessment
@@ -36,71 +40,79 @@ const DISCLAIMER =
   "Estimate only, computed from WHO growth reference LMS parameters. A single measurement is not a " +
   "substitute for tracking growth trajectory over time and clinical assessment.";
 
-// [ageKey, L, M, S] — ageKey is in the unit the source table uses (day or month), not always contiguous.
+// [key, L, M, S] — key is in the unit the source table uses (age in day/month, or length/height in cm),
+// not always contiguous or integer-stepped.
 type LmsRow = [number, number, number, number];
 
-type AgeUnit = "day" | "month";
+type KeyKind = "age_day" | "age_month" | "length_cm";
 
 interface StandardEntry {
-  unit: AgeUnit;
+  keyKind: KeyKind;
   female: LmsRow[];
   male: LmsRow[];
-  ageRangeLabel: string;
+  rangeLabel: string;
 }
 
 const LMS_TABLES: Record<string, StandardEntry> = {
   weight_for_age: {
-    unit: "day",
+    keyKind: "age_day",
     female: wfaGirlsLms as unknown as LmsRow[],
     male: wfaBoysLms as unknown as LmsRow[],
-    ageRangeLabel: "birth to 5 years (WHO Child Growth Standards)",
+    rangeLabel: "birth to 5 years (WHO Child Growth Standards)",
   },
   height_for_age: {
-    unit: "day",
+    keyKind: "age_day",
     female: lhfaGirlsLms as unknown as LmsRow[],
     male: lhfaBoysLms as unknown as LmsRow[],
-    ageRangeLabel: "birth to 5 years (WHO Child Growth Standards)",
+    rangeLabel: "birth to 5 years (WHO Child Growth Standards)",
   },
   bmi_for_age_0_5y: {
-    unit: "day",
+    keyKind: "age_day",
     female: bfaGirlsLms as unknown as LmsRow[],
     male: bfaBoysLms as unknown as LmsRow[],
-    ageRangeLabel: "birth to 5 years (WHO Child Growth Standards)",
+    rangeLabel: "birth to 5 years (WHO Child Growth Standards)",
   },
   bmi_for_age_5_19y: {
-    unit: "month",
+    keyKind: "age_month",
     female: bmi5to19GirlsLms as unknown as LmsRow[],
     male: bmi5to19BoysLms as unknown as LmsRow[],
-    ageRangeLabel: "5 to 19 years (WHO Reference 2007)",
+    rangeLabel: "5 to 19 years (WHO Reference 2007)",
   },
   head_circumference_for_age: {
-    unit: "day",
+    keyKind: "age_day",
     female: hcfaGirlsLms as unknown as LmsRow[],
     male: hcfaBoysLms as unknown as LmsRow[],
-    ageRangeLabel: "birth to 5 years (WHO Child Growth Standards)",
+    rangeLabel: "birth to 5 years (WHO Child Growth Standards)",
+  },
+  weight_for_length: {
+    keyKind: "length_cm",
+    female: wflGirlsLms as unknown as LmsRow[],
+    male: wflBoysLms as unknown as LmsRow[],
+    rangeLabel: "recumbent length 45-110 cm, i.e. roughly birth to 2 years (WHO Child Growth Standards)",
   },
 };
 
 const AVAILABLE_STANDARDS = Object.keys(LMS_TABLES);
 
-/** Binary-search + linear-interpolate LMS parameters for an arbitrary age key. Works for both
- * densely-indexed (day 0..N, contiguous) and sparsely-indexed (month 61..228) tables. */
-function interpolateLms(rows: LmsRow[], ageKey: number): { L: number; M: number; S: number } | null {
-  if (ageKey < rows[0][0] || ageKey > rows[rows.length - 1][0]) return null;
+/** Binary-search + linear-interpolate LMS parameters for an arbitrary key. Works for densely-indexed
+ * (day 0..N, contiguous), sparsely-indexed (month 61..228), and fine-stepped (length 45.0..110.0 by 0.1)
+ * tables alike. */
+function interpolateLms(rows: LmsRow[], key: number): { L: number; M: number; S: number } | null {
+  if (key < rows[0][0] || key > rows[rows.length - 1][0]) return null;
 
   let lo = 0;
   let hi = rows.length - 1;
   while (hi - lo > 1) {
     const mid = (lo + hi) >> 1;
-    if (rows[mid][0] <= ageKey) lo = mid;
+    if (rows[mid][0] <= key) lo = mid;
     else hi = mid;
   }
 
   const low = rows[lo];
   const high = rows[hi];
-  if (low[0] === ageKey) return { L: low[1], M: low[2], S: low[3] };
+  if (low[0] === key) return { L: low[1], M: low[2], S: low[3] };
 
-  const frac = (ageKey - low[0]) / (high[0] - low[0]);
+  const frac = (key - low[0]) / (high[0] - low[0]);
   return {
     L: low[1] + (high[1] - low[1]) * frac,
     M: low[2] + (high[2] - low[2]) * frac,
@@ -136,7 +148,7 @@ function classify(z: number, standard: string): string {
     if (z < -2) return "stunted";
     return "normal";
   }
-  if (standard === "bmi_for_age_0_5y") {
+  if (standard === "bmi_for_age_0_5y" || standard === "weight_for_length") {
     if (z < -3) return "severely wasted";
     if (z < -2) return "wasted";
     if (z > 3) return "obese";
@@ -180,11 +192,13 @@ export function registerWhoGrowthTools(server: McpServer) {
       description:
         `Compute a WHO growth reference z-score and approximate percentile for a measurement, using the ` +
         `LMS method. Currently supports: ${AVAILABLE_STANDARDS.join(", ")} — see each standard's ` +
-        `ageRangeLabel in the tool result for its exact source and valid age range (0-5y standards use the ` +
-        `WHO Child Growth Standards; bmi_for_age_5_19y uses the separate WHO Reference 2007 dataset). More ` +
-        `standards (weight-for-length/height) will be added as their reference ` +
-        `tables are loaded — calling this tool with an unsupported standard or an out-of-range age returns ` +
-        `an error rather than a guess. Provide age as age_days, age_months, or age_years (any one).`,
+        `rangeLabel in the tool result for its exact source and valid range (0-5y standards use the WHO ` +
+        `Child Growth Standards; bmi_for_age_5_19y uses the separate WHO Reference 2007 dataset). Most ` +
+        `standards are keyed by age — provide age_days, age_months, or age_years (any one). ` +
+        `weight_for_length is instead keyed by the child's recumbent length in cm — provide length_or_height_cm ` +
+        `instead of an age. More standards (weight-for-height, keyed by standing height) will be added as ` +
+        `their reference tables are loaded — calling this tool with an unsupported standard or an ` +
+        `out-of-range key returns an error rather than a guess.`,
       inputSchema: {
         standard: z.enum(AVAILABLE_STANDARDS as [string, ...string[]]),
         sex: z.enum(["male", "female"]),
@@ -192,66 +206,86 @@ export function registerWhoGrowthTools(server: McpServer) {
           .number()
           .positive()
           .describe(
-            "The measurement in the standard's units (kg for weight_for_age, cm for height_for_age / head_circumference_for_age, kg/m^2 for bmi_for_age_0_5y / bmi_for_age_5_19y)"
+            "The measurement in the standard's units (kg for weight_for_age / weight_for_length, cm for height_for_age / head_circumference_for_age, kg/m^2 for bmi_for_age_0_5y / bmi_for_age_5_19y)"
           ),
         age_days: z.number().nonnegative().optional(),
         age_months: z.number().nonnegative().optional(),
         age_years: z.number().nonnegative().optional(),
+        length_or_height_cm: z
+          .number()
+          .positive()
+          .optional()
+          .describe("Required instead of age for length/height-keyed standards (currently: weight_for_length)"),
       },
       annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
-    safeTool("who_growth_zscore", async ({ standard, sex, value, age_days, age_months, age_years }) => {
-      const entry = LMS_TABLES[standard];
-      if (!entry) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Standard "${standard}" is not loaded yet. Available: ${AVAILABLE_STANDARDS.join(", ")}.`,
-            },
-          ],
-          isError: true as const,
-        };
+    safeTool(
+      "who_growth_zscore",
+      async ({ standard, sex, value, age_days, age_months, age_years, length_or_height_cm }) => {
+        const entry = LMS_TABLES[standard];
+        if (!entry) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `Standard "${standard}" is not loaded yet. Available: ${AVAILABLE_STANDARDS.join(", ")}.`,
+              },
+            ],
+            isError: true as const,
+          };
+        }
+
+        let key: number;
+        let resultAgeDays: number | null = null;
+
+        if (entry.keyKind === "length_cm") {
+          if (length_or_height_cm === undefined) {
+            return {
+              content: [
+                { type: "text" as const, text: `${standard} requires length_or_height_cm, not an age.` },
+              ],
+              isError: true as const,
+            };
+          }
+          key = length_or_height_cm;
+        } else {
+          const ageDays = ageDaysFrom(age_days, age_months, age_years);
+          if (ageDays === null) {
+            return {
+              content: [{ type: "text" as const, text: "Provide age_days, age_months, or age_years." }],
+              isError: true as const,
+            };
+          }
+          resultAgeDays = ageDays;
+          key = entry.keyKind === "age_month" ? ageDays / 30.4375 : ageDays;
+        }
+
+        const rows = entry[sex];
+        const lms = interpolateLms(rows, key);
+        if (!lms) {
+          return {
+            content: [{ type: "text" as const, text: `Input is outside this standard's range (${entry.rangeLabel}).` }],
+            isError: true as const,
+          };
+        }
+
+        const zScore = lmsZScore(value, lms.L, lms.M, lms.S);
+        const percentile = normalCdf(zScore) * 100;
+
+        return ok({
+          standard,
+          source_range: entry.rangeLabel,
+          sex,
+          age_days: resultAgeDays !== null ? Math.round(resultAgeDays * 10) / 10 : null,
+          length_or_height_cm: entry.keyKind === "length_cm" ? length_or_height_cm : null,
+          value,
+          z_score: Math.round(zScore * 100) / 100,
+          percentile: Math.round(percentile * 10) / 10,
+          classification: classify(zScore, standard),
+          lms_parameters: { L: lms.L, M: lms.M, S: lms.S },
+          disclaimer: DISCLAIMER,
+        });
       }
-
-      const ageDays = ageDaysFrom(age_days, age_months, age_years);
-      if (ageDays === null) {
-        return {
-          content: [{ type: "text" as const, text: "Provide age_days, age_months, or age_years." }],
-          isError: true as const,
-        };
-      }
-
-      const rows = entry[sex];
-      const ageKey = entry.unit === "day" ? ageDays : ageDays / 30.4375;
-      const lms = interpolateLms(rows, ageKey);
-      if (!lms) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `age is outside this standard's range (${entry.ageRangeLabel}).`,
-            },
-          ],
-          isError: true as const,
-        };
-      }
-
-      const zScore = lmsZScore(value, lms.L, lms.M, lms.S);
-      const percentile = normalCdf(zScore) * 100;
-
-      return ok({
-        standard,
-        source_age_range: entry.ageRangeLabel,
-        sex,
-        age_days: Math.round(ageDays * 10) / 10,
-        value,
-        z_score: Math.round(zScore * 100) / 100,
-        percentile: Math.round(percentile * 10) / 10,
-        classification: classify(zScore, standard),
-        lms_parameters: { L: lms.L, M: lms.M, S: lms.S },
-        disclaimer: DISCLAIMER,
-      });
-    })
+    )
   );
 }
