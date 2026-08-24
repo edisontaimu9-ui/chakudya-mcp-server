@@ -9,7 +9,7 @@ import { ok, safeTool } from "../utils/toolResult.js";
  * Recommendations for Refeeding Syndrome. Nutr Clin Pract. 2020;35(2):178-195.
  * DOI: 10.1002/ncp.10474.
  *
- * Three tools:
+ * Four tools:
  * - aspen_refeeding_risk_adult      — Table 3 (risk stratification, 18y+)
  * - aspen_refeeding_risk_pediatric  — Table 5 (risk stratification, >28 days
  *                                     to <18y; not for neonates ≤28 days of
@@ -20,6 +20,9 @@ import { ok, safeTool } from "../utils/toolResult.js";
  *   definition: a decrease in phosphorus/potassium/magnesium of 10-20%
  *   (mild), 20-30% (moderate), or >30% and/or organ dysfunction or thiamin
  *   deficiency (severe), within 5 days of reinitiating/increasing calories.
+ * - aspen_refeeding_initiation_guidance — Table 6 (adult) / Table 7
+ *   (pediatric): weight-based initial calories/GIR, advancement, and
+ *   electrolyte/thiamin/monitoring guidance for a patient at risk.
  *
  * Several Table 3/5 criteria (caloric-intake pattern, electrolyte trend,
  * physical-exam loss of fat/muscle, comorbidity severity) are not single
@@ -568,6 +571,150 @@ export function registerAspenRefeedingTools(server: McpServer): void {
                 : within_5_days_of_refeeding === false
                   ? "within_5_days_of_refeeding is false — per the ASPEN definition this does not meet the RS timing criterion regardless of electrolyte/organ/thiamin findings."
                   : undefined,
+          },
+          { disclaimer: ASPEN_DISCLAIMER }
+        );
+      }
+    )
+  );
+
+  // ── Initiation & advancement guidance (Table 6 adult / Table 7 pediatric) ─
+  server.registerTool(
+    "aspen_refeeding_initiation_guidance",
+    {
+      title: "ASPEN Refeeding Initiation & Advancement Guidance (Table 6/7)",
+      description:
+        "Weight-based initiation and advancement guidance for a patient at risk of refeeding syndrome, " +
+        "per ASPEN Table 6 (adults 18y+) or Table 7 (pediatric). Adults: initiate at 10-20 kcal/kg/day " +
+        "(or 100-150 g dextrose) for the first 24h, advancing by 33% of goal every 1-2 days. Pediatric: " +
+        "initiate nutrition at a maximum of 40-50% of goal, starting the glucose infusion rate (GIR) " +
+        "around 4-6 mg/kg/min and advancing 1-2 mg/kg/min daily up to a max of 14-18 mg/kg/min. Both " +
+        "populations: delay/reduce initiation if prefeeding phosphorus/potassium/magnesium are severely " +
+        "low, until corrected; electrolyte and thiamin dosing and monitoring cadence follow the same " +
+        "pattern in both tables. This is general guidance only — Table 6/7 both note it 'may be changed " +
+        "based on practitioner judgment and clinical presentation.'",
+      inputSchema: {
+        population: z.enum(["adult", "pediatric"]),
+        weight_kg: z.number().positive(),
+        at_risk_for_rs: z
+          .boolean()
+          .optional()
+          .describe(
+            "Whether this patient has been assessed as at risk for RS (e.g. via aspen_refeeding_risk_adult/" +
+              "_pediatric) — determines whether the closer at-risk monitoring cadence applies"
+          ),
+        prefeeding_electrolytes_severely_low: z
+          .boolean()
+          .optional()
+          .describe(
+            "Severely low prefeeding phosphorus, potassium, or magnesium — both tables say initiation " +
+              "of or increasing calories should be delayed until corrected in this case"
+          ),
+      },
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    safeTool(
+      "aspen_refeeding_initiation_guidance",
+      async ({ population, weight_kg, at_risk_for_rs, prefeeding_electrolytes_severely_low }) => {
+        const electrolytes = [
+          "Check serum potassium, magnesium, and phosphorus before initiation of nutrition.",
+          at_risk_for_rs === false
+            ? "Monitor electrolytes per institutional standards of care."
+            : "Monitor every 12 hours for the first 3 days in high-risk patients (may be more frequent based on clinical picture).",
+          "Replete low electrolytes based on established standards of care.",
+          "No recommendation can be made for whether prophylactic electrolyte dosing should be given if prefeeding levels are normal.",
+          "If electrolytes become difficult to correct or drop precipitously during initiation, decrease calories/grams of dextrose by 50% and advance by approximately 33% of goal every 1-2 days based on clinical presentation; consider ceasing nutrition support if levels are severely/life-threateningly low or dropping precipitously.",
+        ];
+
+        const monitoring = [
+          at_risk_for_rs === false
+            ? "Vital signs per institutional standards of care."
+            : "Vital signs every 4 hours for the first 24 hours after initiation of calories.",
+          "Cardiorespiratory monitoring for unstable patients or those with severe deficiencies, per established standards of care.",
+          "Daily weights with monitored intake and output.",
+          "Evaluate short- and long-term nutrition care goals daily during the first several days until stabilized (e.g. no electrolyte supplementation required for 2 days), then per institutional standards.",
+        ];
+
+        const delayNote = prefeeding_electrolytes_severely_low
+          ? "Prefeeding phosphorus, potassium, or magnesium is severely low: initiation of or increasing calories should be delayed until corrected."
+          : undefined;
+
+        if (population === "adult") {
+          const kcalPerKgLow = 10;
+          const kcalPerKgHigh = 20;
+          return ok(
+            {
+              population: "adults 18y+",
+              initialCalories: {
+                rangeKcalPerKgPerDay: [kcalPerKgLow, kcalPerKgHigh],
+                rangeTotalKcalFirst24h: [
+                  Math.round(weight_kg * kcalPerKgLow),
+                  Math.round(weight_kg * kcalPerKgHigh),
+                ],
+                alternativeAbsoluteDextroseGramsFirst24h: [100, 150],
+                note:
+                  "The 100-150 g dextrose figure is Table 6's alternative, weight-independent guideline for the same first-24h window — use whichever fits your protocol, not both. Includes enteral as well as parenteral glucose, and dextrose from IV fluids/medications.",
+              },
+              advancement:
+                "Advance by 33% of goal every 1-2 days. If a patient has received significant dextrose for several days (e.g. maintenance IV fluids/medications) and has been asymptomatic with stable electrolytes, calories from nutrition may be reintroduced at a higher amount than the above.",
+              fluidSodiumProteinRestriction: "No recommendation in any of these for adults.",
+              electrolytes,
+              thiamin: [
+                "Supplement thiamin 100 mg before feeding or before initiating dextrose-containing IV fluids in patients at risk.",
+                "Supplement thiamin 100 mg/day for 5-7 days or longer in patients with severe starvation, chronic alcoholism, or other high risk for deficiency and/or signs of thiamin deficiency.",
+                "Routine thiamin levels are unlikely to be of value.",
+                "MVI added to PN daily unless contraindicated, for as long as PN continues. For oral/enteral nourishment, add a complete oral/enteral multivitamin once daily for 10 days or greater based on clinical status and mode of therapy.",
+              ],
+              monitoring,
+              delayInitiationNote: delayNote,
+            },
+            { disclaimer: ASPEN_DISCLAIMER }
+          );
+        }
+
+        // pediatric
+        const girStartLow = 4;
+        const girStartHigh = 6;
+        const girMaxLow = 14;
+        const girMaxHigh = 18;
+        const girAdvanceLow = 1;
+        const girAdvanceHigh = 2;
+        // mg/kg/min -> g/day: mg/kg/min * weight_kg * 1440 min/day / 1000 mg/g
+        const gPerDay = (girMgKgMin: number) => Math.round(((girMgKgMin * weight_kg * 1440) / 1000) * 10) / 10;
+
+        const thiaminMgPerKg = 2;
+        const thiaminDoseMg = Math.min(Math.max(thiaminMgPerKg * weight_kg, 100), 200);
+
+        return ok(
+          {
+            population: ">28 days to <18 years (not intended for neonates ≤28 days of life or ≤44 weeks corrected gestational age)",
+            initialNutrition: {
+              maxPercentOfGoal: [40, 50],
+              glucoseInfusionRateMgKgMin: {
+                start: [girStartLow, girStartHigh],
+                advanceDailyBy: [girAdvanceLow, girAdvanceHigh],
+                max: [girMaxLow, girMaxHigh],
+              },
+              derivedDextroseGramsPerDay: {
+                atStartGir: [gPerDay(girStartLow), gPerDay(girStartHigh)],
+                atMaxGir: [gPerDay(girMaxLow), gPerDay(girMaxHigh)],
+                note:
+                  "Derived from GIR x weight x 1440 min/day, not stated directly in ASPEN Table 7 — a straight unit conversion of the GIR figures for convenience, not a separate ASPEN recommendation.",
+              },
+              note:
+                "Includes enteral as well as parenteral glucose. If already receiving IV dextrose for several days/medications in dextrose and asymptomatic with stable electrolytes, calories from nutrition may be reintroduced at a higher amount than above.",
+            },
+            fluidSodiumProteinRestriction: "No recommendation in any of these for pediatric patients.",
+            electrolytes,
+            thiamin: [
+              `Thiamin 2 mg/kg to a max of 100-200 mg/day before feeding commences or before initiating dextrose-containing IV fluids in high-risk patients (≈${thiaminDoseMg} mg for this patient's weight, capped to the 100-200 mg/day range).`,
+              "Continue thiamin supplementation for 5-7 days or longer in patients with severe starvation, chronic alcoholism, or other high risk for deficiency and/or signs of thiamin deficiency.",
+              "Routine thiamin levels are unlikely to be of value.",
+              "MVI added to PN daily unless contraindicated, for as long as PN continues. For oral/enteral nourishment, add a complete oral/enteral multivitamin once daily for 10 days or greater based on clinical status and mode of therapy.",
+              "Once the patient is within adult weight ranges, refer to adult multivitamin recommendations.",
+            ],
+            monitoring: [...monitoring, "Estimation of energy requirements as needed for oral feeding patients."],
+            delayInitiationNote: delayNote,
           },
           { disclaimer: ASPEN_DISCLAIMER }
         );
