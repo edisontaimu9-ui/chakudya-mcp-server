@@ -32,7 +32,7 @@ transport wraps it.
 
 ## Tools
 
-All 30 tools either call your existing Chakudya Worker over HTTPS, or are pure in-process calculation/table
+All 31 tools either call your existing Chakudya Worker over HTTPS, or are pure in-process calculation/table
 lookups — none of them touch Supabase, Cohere, or Groq directly, and none of them need `ADMIN_API_KEY`
 (every route they use is public).
 
@@ -68,6 +68,7 @@ lookups — none of them touch Supabase, Cohere, or Groq directly, and none of t
 | `fever_stress_ree_adjustment` | none — pure fever REE adjustment math |
 | `atwater_food_energy_calculator` | none — pure Atwater factor (4/9/4/7) math |
 | `dri_eer_reference_lookup` | none — pure DRI Table 2.2 reference table lookup |
+| `who_growth_zscore` | none — pure WHO Child Growth Standards LMS z-score/percentile calculation |
 
 `disease_information` and `medicine_information` always return an educational disclaimer alongside the
 answer and are prompted to avoid diagnosis/prescribing language — but they're still LLM-generated text
@@ -97,6 +98,9 @@ src/
 │   ├── educationTools.ts
 │   ├── pediatricTools.ts        Pediatric fluid/energy/protein/growth/enteral-feed calculators
 │   └── energyExpenditureTools.ts  IOM/DRI EER, MET activity, alcohol kcal, RQ interpreter
+│   └── whoGrowthTools.ts        WHO Child Growth Standards z-score/percentile calculator (LMS)
+├── data/
+│   └── who/                     WHO Child Growth Standards LMS tables (JSON, per standard+sex)
 └── utils/
     ├── logger.ts             Structured JSON logging
     └── toolResult.ts         Consistent success/error shaping for every tool handler
